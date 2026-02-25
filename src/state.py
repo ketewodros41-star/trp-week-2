@@ -1,7 +1,8 @@
 import operator
-from typing import Annotated, Dict, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
+
 
 # --- Detective Output ---
 class Evidence(BaseModel):
@@ -14,6 +15,7 @@ class Evidence(BaseModel):
     )
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score for the evidence")
 
+
 # --- Judge Output ---
 class JudicialOpinion(BaseModel):
     judge: Literal["Prosecutor", "Defense", "TechLead"]
@@ -22,6 +24,8 @@ class JudicialOpinion(BaseModel):
     argument: str
     cited_evidence: List[str] = Field(default_factory=list, description="List of evidence IDs or keys cited")
 
+
+# --- Chief Justice Output ---
 class CriterionResult(BaseModel):
     dimension_id: str
     dimension_name: str
@@ -35,16 +39,16 @@ class CriterionResult(BaseModel):
         description="Specific file-level instructions for improvement",
     )
 
-# --- Chief Justice Output ---
+
 class AuditReport(BaseModel):
     repo_url: str
     executive_summary: str
     overall_score: float
     criteria: List[CriterionResult]
-    remediation_plan: str = Field(alias="remediation計劃") # Supporting the UTF-8 alias from the doc
+    remediation_plan: str = Field(
+        description="High-level remediation plan grouped by criterion"
+    )
 
-    class Config:
-        populate_by_name = True
 
 # --- Graph State ---
 class AgentState(TypedDict):
