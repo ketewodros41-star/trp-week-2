@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
 from src.nodes.detectives import (
+    context_builder_node,
     repo_investigator_node,
     doc_analyst_node,
     vision_inspector_node,
@@ -13,11 +14,28 @@ import argparse
 import os
 from dotenv import load_dotenv
 
+def detective_router(state: AgentState):
+    """Router for conditional parallel fan-out."""
+    available = state.get("available_artifacts", [])
+    targets = []
+    
+    if "repo" in available:
+        targets.append("repo_investigator")
+    if "pdf" in available:
+        targets.append("doc_analyst")
+        targets.append("vision_inspector")
+    
+    # If no artifacts are found, skip directly to aggregation
+    if not targets:
+        return "evidence_aggregator"
+    return targets
+
 
 def create_graph():
     workflow = StateGraph(AgentState)
 
     # --- Add all nodes ---
+    workflow.add_node("context_builder", context_builder_node)
     workflow.add_node("repo_investigator", repo_investigator_node)
     workflow.add_node("doc_analyst", doc_analyst_node)
     workflow.add_node("vision_inspector", vision_inspector_node)
@@ -29,10 +47,21 @@ def create_graph():
 
     workflow.add_node("chief_justice", chief_justice_node)
 
-    # --- Layer 1: Detective Fan-Out (Parallel) ---
-    workflow.add_edge(START, "repo_investigator")
-    workflow.add_edge(START, "doc_analyst")
-    workflow.add_edge(START, "vision_inspector")
+    # --- Orchestration Layer 1: Forensic Routing ---
+    workflow.add_edge(START, "context_builder")
+    
+    # Master Thinker Pattern: Conditional Fan-Out
+    # This prevents running detectives on missing artifacts
+    workflow.add_conditional_edges(
+        "context_builder",
+        detective_router,
+        {
+            "repo_investigator": "repo_investigator",
+            "doc_analyst": "doc_analyst",
+            "vision_inspector": "vision_inspector",
+            "evidence_aggregator": "evidence_aggregator"
+        }
+    )
 
     # --- Fan-In: All detectives converge on aggregator ---
     workflow.add_edge("repo_investigator", "evidence_aggregator")
@@ -91,6 +120,7 @@ def main():
         "repo_url": args.repo_url,
         "pdf_path": args.pdf_path,
         "rubric_dimensions": rubric["dimensions"],
+        "available_artifacts": [],
         "evidences": {},
         "opinions": [],
         "final_report": None,

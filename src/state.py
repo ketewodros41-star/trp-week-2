@@ -55,6 +55,7 @@ class AgentState(TypedDict):
     repo_url: str
     pdf_path: str
     rubric_dimensions: List[Dict]
+    available_artifacts: List[str]  # e.g., ["repo", "pdf"]
     # Use reducers to prevent parallel agents from overwriting data
     evidences: Annotated[Dict[str, List[Evidence]], operator.ior]
     opinions: Annotated[List[JudicialOpinion], operator.add]

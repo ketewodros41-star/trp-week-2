@@ -1,16 +1,50 @@
 import os
+import logging
 from src.state import AgentState, Evidence
 from src.tools.repo_tools import RepoInvestigator
 from src.tools.doc_tools import DocAnalyst
 from src.tools.vision_tools import VisionInspector
 
+logger = logging.getLogger(__name__)
+
+
+def context_builder_node(state: AgentState) -> dict:
+    """Pre-checks artifact availability and builds orchestration context."""
+    available = []
+    
+    # Check Repo
+    if state.get("repo_url") and state["repo_url"].startswith("http"):
+        available.append("repo")
+    
+    # Check PDF
+    pdf_path = state.get("pdf_path")
+    if pdf_path and os.path.exists(pdf_path):
+        available.append("pdf")
+    
+    logger.info(f"Orchestration Context: Available artifacts = {available}")
+    return {"available_artifacts": available}
+
 
 def repo_investigator_node(state: AgentState) -> dict:
     """Node for forensic analysis of the repository."""
     repo_url = state["repo_url"]
+    if not repo_url:
+        return {"evidences": {}}
+        
     inv = RepoInvestigator()
 
-    repo_path = inv.clone_repo(repo_url)
+    try:
+        repo_path = inv.clone_repo(repo_url)
+    except Exception as e:
+        logger.error(f"RepoInvestigator failed to clone: {e}")
+        return {"evidences": {"safe_tool_engineering": [Evidence(
+            goal="Clone repository safely",
+            found=False,
+            location=repo_url,
+            rationale=f"Clone failed: {str(e)}",
+            confidence=1.0
+        )]}}
+
     try:
         git_log = inv.get_git_log(repo_path)
         ast_data = inv.analyze_ast(repo_path)
@@ -40,7 +74,6 @@ def repo_investigator_node(state: AgentState) -> dict:
         # Evidence: State Management Rigor
         # -------------------------------------------------------------------
         state_defs = ast_data["state_definitions"]
-        has_reducer = any("ior" in d or "add" in d for d in ast_data.get("parallel_edges", []))
         evidences["state_management_rigor"] = [Evidence(
             goal="Verify Pydantic/TypedDict AgentState with reducers",
             found=len(state_defs) > 0,
@@ -55,7 +88,6 @@ def repo_investigator_node(state: AgentState) -> dict:
         # -------------------------------------------------------------------
         graph_defs = ast_data["graph_definitions"]
         parallel_edges = ast_data["parallel_edges"]
-        # Parallelism requires multiple edges FROM the same source node (fan-out)
         evidences["graph_orchestration"] = [Evidence(
             goal="Verify LangGraph parallel fan-out/fan-in architecture",
             found=len(graph_defs) > 0,
@@ -72,7 +104,6 @@ def repo_investigator_node(state: AgentState) -> dict:
         # -------------------------------------------------------------------
         # Evidence: Safe Tool Engineering
         # -------------------------------------------------------------------
-        # Scan src/tools/ for sandboxing and subprocess usage
         safe_tool_evidence = _check_safe_tool_engineering(repo_path)
         evidences["safe_tool_engineering"] = [safe_tool_evidence]
 
@@ -127,14 +158,11 @@ def _check_safe_tool_engineering(repo_path: str) -> Evidence:
         for node in ast_mod.walk(tree):
             if isinstance(node, ast_mod.Call):
                 func = node.func
-                # Detect os.system
                 if isinstance(func, ast_mod.Attribute) and func.attr == "system":
                     has_os_system = True
-                # Detect tempfile usage
                 if isinstance(func, ast_mod.Attribute) and func.attr in ("mkdtemp", "TemporaryDirectory"):
                     has_tempfile = True
                     locations_found.append(f"{fname}: {func.attr} at line {node.lineno}")
-                # Detect subprocess.run
                 if isinstance(func, ast_mod.Attribute) and func.attr == "run":
                     has_subprocess = True
                     locations_found.append(f"{fname}: subprocess.run at line {node.lineno}")
@@ -158,27 +186,26 @@ def _check_safe_tool_engineering(repo_path: str) -> Evidence:
 def doc_analyst_node(state: AgentState) -> dict:
     """Node for forensic analysis of the PDF report."""
     pdf_path = state["pdf_path"]
-    analyst = DocAnalyst()
+    if not pdf_path or not os.path.exists(pdf_path):
+         return {"evidences": {}}
 
-    if not os.path.exists(pdf_path):
-        missing = Evidence(
+    analyst = DocAnalyst()
+    try:
+        doc_text = analyst.ingest_pdf(pdf_path)
+    except Exception as e:
+        logger.error(f"DocAnalyst failed to ingest PDF: {e}")
+        return {"evidences": {"theoretical_depth": [Evidence(
             goal="Analyze PDF report",
             found=False,
             location=pdf_path,
-            rationale="PDF file not found at specified path.",
-            confidence=1.0,
-        )
-        return {"evidences": {
-            "theoretical_depth": [missing],
-            "report_accuracy": [missing],
-        }}
+            rationale=f"Ingestion failed: {str(e)}",
+            confidence=1.0
+        )]}}
 
-    doc_text = analyst.ingest_pdf(pdf_path)
     keywords = ["Dialectical Synthesis", "Fan-In / Fan-Out", "Metacognition", "State Synchronization"]
     concept_data = analyst.query_concepts(doc_text, keywords)
     extracted_paths = analyst.extract_file_paths(doc_text)
 
-    # Theoretical Depth — distinguish context vs. buzzword-drop
     keywords_found_in_context = []
     keywords_only_buzzword = []
     for kw, ctx in concept_data.items():
@@ -201,7 +228,6 @@ def doc_analyst_node(state: AgentState) -> dict:
         confidence=0.85,
     )
 
-    # Report Accuracy — store extracted paths for aggregator cross-reference
     accuracy_evidence = Evidence(
         goal="Extract file paths from report for cross-referencing with repo",
         found=len(extracted_paths) > 0,
@@ -220,8 +246,10 @@ def doc_analyst_node(state: AgentState) -> dict:
 def vision_inspector_node(state: AgentState) -> dict:
     """Node for forensic analysis of diagrams in the PDF."""
     pdf_path = state["pdf_path"]
-    viz = VisionInspector()
+    if not pdf_path or not os.path.exists(pdf_path):
+        return {"evidences": {}}
 
+    viz = VisionInspector()
     images = viz.extract_images_from_pdf(pdf_path)
 
     evidences = {
@@ -250,13 +278,24 @@ def evidence_aggregator_node(state: AgentState) -> dict:
     cross-referencing between repo findings and document claims.
     """
     evidences = state.get("evidences", {})
+    available = state.get("available_artifacts", [])
+    
+    logger.info(f"Aggregating evidence. Available artifacts recorded: {available}")
+    
+    if not available:
+        logger.warning("No artifacts were available for detection. Aggregating empty set.")
+        return {"evidences": {"report_accuracy": [Evidence(
+            goal="Collect evidence",
+            found=False,
+            location="N/A",
+            rationale="No target artifacts provided or available.",
+            confidence=1.0
+        )]}}
 
     # Cross-reference: report claims vs. actual repo files
-    # DocAnalyst extracts paths; RepoInvestigator confirms via git_log/ast evidence
     raw_paths_evidence = evidences.get("report_accuracy_raw_paths", [])
     if raw_paths_evidence and raw_paths_evidence[0].found:
         claimed_paths = raw_paths_evidence[0].content.split("\n") if raw_paths_evidence[0].content else []
-        # The git evidence content contains actual file paths found via AST scan
         actual_state_evidence = evidences.get("state_management_rigor", [])
         actual_graph_evidence = evidences.get("graph_orchestration", [])
         known_real_paths = set()
