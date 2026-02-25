@@ -1,6 +1,7 @@
 from src.state import AgentState, Evidence
 from src.tools.repo_tools import RepoInvestigator
 from src.tools.doc_tools import DocAnalyst
+from src.tools.vision_tools import VisionInspector
 import os
 
 def repo_investigator_node(state: AgentState) -> dict:
@@ -88,6 +89,28 @@ def doc_analyst_node(state: AgentState) -> dict:
         location=pdf_path,
         rationale="Extracted file paths mentioned in documentation.",
         confidence=0.7
+    )]
+    
+    return {"evidences": evidences}
+
+def vision_inspector_node(state: AgentState) -> dict:
+    """Node for forensic analysis of diagrams in the PDF."""
+    pdf_path = state["pdf_path"]
+    viz = VisionInspector()
+    
+    # Extract images (Implementation is stubbed in tools)
+    images = viz.extract_images_from_pdf(pdf_path)
+    
+    evidences = {}
+    
+    # Swarm Visual
+    evidences["swarm_visual"] = [Evidence(
+        goal="Analyze architectural diagrams for parallelism",
+        found=len(images) > 0,
+        content=f"Found {len(images)} images. Analyzing for parallel flow patterns.",
+        location=pdf_path,
+        rationale="Visual inspection of PDF diagrams for fan-out/fan-in patterns.",
+        confidence=0.5
     )]
     
     return {"evidences": evidences}

@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
-from src.nodes.detectives import repo_investigator_node, doc_analyst_node, evidence_aggregator_node
+from src.state import AgentState
+from src.nodes.detectives import repo_investigator_node, doc_analyst_node, vision_inspector_node, evidence_aggregator_node
 from src.nodes.judges import prosecutor_node, defense_node, tech_lead_node
 from src.nodes.justice import chief_justice_node
 import json
@@ -11,6 +12,7 @@ def create_graph():
     # Add Nodes
     workflow.add_node("repo_investigator", repo_investigator_node)
     workflow.add_node("doc_analyst", doc_analyst_node)
+    workflow.add_node("vision_inspector", vision_inspector_node)
     workflow.add_node("evidence_aggregator", evidence_aggregator_node)
     
     workflow.add_node("prosecutor", prosecutor_node)
@@ -22,10 +24,12 @@ def create_graph():
     # Layer 1: Detectives (Parallel Fan-Out)
     workflow.add_edge(START, "repo_investigator")
     workflow.add_edge(START, "doc_analyst")
+    workflow.add_edge(START, "vision_inspector")
     
     # Fan-In to Aggregator
     workflow.add_edge("repo_investigator", "evidence_aggregator")
     workflow.add_edge("doc_analyst", "evidence_aggregator")
+    workflow.add_edge("vision_inspector", "evidence_aggregator")
     
     # Layer 2: Judges (Parallel Fan-Out)
     workflow.add_edge("evidence_aggregator", "prosecutor")
