@@ -1,122 +1,288 @@
+import os
 from src.state import AgentState, Evidence
 from src.tools.repo_tools import RepoInvestigator
 from src.tools.doc_tools import DocAnalyst
 from src.tools.vision_tools import VisionInspector
-import os
+
 
 def repo_investigator_node(state: AgentState) -> dict:
     """Node for forensic analysis of the repository."""
     repo_url = state["repo_url"]
     inv = RepoInvestigator()
-    
+
     repo_path = inv.clone_repo(repo_url)
     try:
         git_log = inv.get_git_log(repo_path)
         ast_data = inv.analyze_ast(repo_path)
-        
+
         evidences = {}
-        
-        # Git Forensic Analysis
+
+        # -------------------------------------------------------------------
+        # Evidence: Git Forensic Analysis
+        # -------------------------------------------------------------------
+        commit_count = len(git_log)
+        messages = [c["message"] for c in git_log]
+        has_progression = (
+            commit_count > 3
+            and any(kw in " ".join(messages).lower() for kw in ["setup", "init", "environment"])
+            and any(kw in " ".join(messages).lower() for kw in ["tool", "engineer", "detective"])
+        )
         evidences["git_forensic_analysis"] = [Evidence(
-            goal="Analyze commit history progression",
-            found=True,
-            content=str(git_log),
-            location="git log",
-            rationale="Extracted full git history using GitPython.",
-            confidence=1.0
+            goal="Analyze commit history for atomic progression",
+            found=commit_count > 3,
+            content="\n".join([f"{c['hash']} {c['timestamp']}: {c['message']}" for c in git_log]),
+            location="git log --oneline --reverse",
+            rationale=f"Found {commit_count} commits. Progression pattern detected: {has_progression}.",
+            confidence=1.0,
         )]
-        
-        # State Management Rigor
+
+        # -------------------------------------------------------------------
+        # Evidence: State Management Rigor
+        # -------------------------------------------------------------------
+        state_defs = ast_data["state_definitions"]
+        has_reducer = any("ior" in d or "add" in d for d in ast_data.get("parallel_edges", []))
         evidences["state_management_rigor"] = [Evidence(
-            goal="Verify Pydantic/TypedDict state",
-            found=len(ast_data["state_definitions"]) > 0,
-            content="\n".join(ast_data["state_definitions"]),
-            location="src/",
-            rationale="Scanned repository for state definitions using AST.",
-            confidence=0.9
+            goal="Verify Pydantic/TypedDict AgentState with reducers",
+            found=len(state_defs) > 0,
+            content="\n".join(state_defs),
+            location="src/state.py",
+            rationale=f"Found {len(state_defs)} typed class definitions (BaseModel/TypedDict).",
+            confidence=0.95,
         )]
-        
-        # Graph Orchestration
+
+        # -------------------------------------------------------------------
+        # Evidence: Graph Orchestration
+        # -------------------------------------------------------------------
+        graph_defs = ast_data["graph_definitions"]
+        parallel_edges = ast_data["parallel_edges"]
+        # Parallelism requires multiple edges FROM the same source node (fan-out)
         evidences["graph_orchestration"] = [Evidence(
-            goal="Verify LangGraph architecture",
-            found=len(ast_data["graph_definitions"]) > 0,
-            content="\n".join(ast_data["graph_definitions"] + ast_data["parallel_edges"]),
+            goal="Verify LangGraph parallel fan-out/fan-in architecture",
+            found=len(graph_defs) > 0,
+            content="\n".join(graph_defs + parallel_edges),
             location="src/graph.py",
-            rationale="Analyzed StateGraph instantiation and edge wiring using AST.",
-            confidence=0.9
+            rationale=(
+                f"StateGraph instantiated: {len(graph_defs) > 0}. "
+                f"Edge calls found: {len(parallel_edges)}. "
+                "Parallelism implied by multiple edges from START."
+            ),
+            confidence=0.9,
+        )]
+
+        # -------------------------------------------------------------------
+        # Evidence: Safe Tool Engineering
+        # -------------------------------------------------------------------
+        # Scan src/tools/ for sandboxing and subprocess usage
+        safe_tool_evidence = _check_safe_tool_engineering(repo_path)
+        evidences["safe_tool_engineering"] = [safe_tool_evidence]
+
+        # -------------------------------------------------------------------
+        # Evidence: Structured Output Enforcement
+        # -------------------------------------------------------------------
+        structured_output_calls = ast_data.get("structured_output_calls", [])
+        evidences["structured_output_enforcement"] = [Evidence(
+            goal="Verify Judges use .with_structured_output() or .bind_tools()",
+            found=len(structured_output_calls) > 0,
+            content="\n".join(structured_output_calls),
+            location="src/nodes/judges.py",
+            rationale=f"Found {len(structured_output_calls)} structured output call(s) via AST scan.",
+            confidence=0.9,
         )]
 
         return {"evidences": evidences}
     finally:
         inv.cleanup(repo_path)
 
+
+def _check_safe_tool_engineering(repo_path: str) -> Evidence:
+    """Scan repo for tempfile usage vs. raw os.system calls."""
+    import ast as ast_mod
+
+    tools_dir = os.path.join(repo_path, "src", "tools")
+    has_tempfile = False
+    has_os_system = False
+    has_subprocess = False
+    locations_found = []
+
+    if not os.path.exists(tools_dir):
+        return Evidence(
+            goal="Verify sandboxed git clone in src/tools/",
+            found=False,
+            content=None,
+            location="src/tools/ (not found)",
+            rationale="src/tools/ directory does not exist in the repository.",
+            confidence=1.0,
+        )
+
+    for fname in os.listdir(tools_dir):
+        if not fname.endswith(".py"):
+            continue
+        fpath = os.path.join(tools_dir, fname)
+        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+            source = f.read()
+        try:
+            tree = ast_mod.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast_mod.walk(tree):
+            if isinstance(node, ast_mod.Call):
+                func = node.func
+                # Detect os.system
+                if isinstance(func, ast_mod.Attribute) and func.attr == "system":
+                    has_os_system = True
+                # Detect tempfile usage
+                if isinstance(func, ast_mod.Attribute) and func.attr in ("mkdtemp", "TemporaryDirectory"):
+                    has_tempfile = True
+                    locations_found.append(f"{fname}: {func.attr} at line {node.lineno}")
+                # Detect subprocess.run
+                if isinstance(func, ast_mod.Attribute) and func.attr == "run":
+                    has_subprocess = True
+                    locations_found.append(f"{fname}: subprocess.run at line {node.lineno}")
+
+    is_safe = has_tempfile and not has_os_system
+    return Evidence(
+        goal="Verify sandboxed git clone using tempfile, no raw os.system",
+        found=is_safe,
+        content="\n".join(locations_found) if locations_found else "No sandboxed cloning detected.",
+        location="src/tools/repo_tools.py",
+        rationale=(
+            f"tempfile detected: {has_tempfile}, "
+            f"subprocess.run detected: {has_subprocess}, "
+            f"raw os.system detected: {has_os_system}. "
+            f"{'SAFE: uses sandboxed temp dir.' if is_safe else 'UNSAFE: os.system or no sandboxing.'}"
+        ),
+        confidence=0.95,
+    )
+
+
 def doc_analyst_node(state: AgentState) -> dict:
     """Node for forensic analysis of the PDF report."""
     pdf_path = state["pdf_path"]
     analyst = DocAnalyst()
-    
+
     if not os.path.exists(pdf_path):
-        return {"evidences": {"theoretical_depth": [Evidence(
-            goal="Analyze theoretical depth in PDF",
+        missing = Evidence(
+            goal="Analyze PDF report",
             found=False,
             location=pdf_path,
             rationale="PDF file not found at specified path.",
-            confidence=1.0
-        )]}}
+            confidence=1.0,
+        )
+        return {"evidences": {
+            "theoretical_depth": [missing],
+            "report_accuracy": [missing],
+        }}
 
     doc_text = analyst.ingest_pdf(pdf_path)
     keywords = ["Dialectical Synthesis", "Fan-In / Fan-Out", "Metacognition", "State Synchronization"]
     concept_data = analyst.query_concepts(doc_text, keywords)
     extracted_paths = analyst.extract_file_paths(doc_text)
-    
-    evidences = {}
-    
-    # Theoretical Depth
-    evidences["theoretical_depth"] = [Evidence(
-        goal="Verify deep understanding of concepts",
-        found=any("Term not found" not in v for v in concept_data.values()),
+
+    # Theoretical Depth — distinguish context vs. buzzword-drop
+    keywords_found_in_context = []
+    keywords_only_buzzword = []
+    for kw, ctx in concept_data.items():
+        if "Term not found" in ctx:
+            keywords_only_buzzword.append(kw)
+        elif len(ctx.split()) > 20:
+            keywords_found_in_context.append(kw)
+        else:
+            keywords_only_buzzword.append(kw)
+
+    theoretical_evidence = Evidence(
+        goal="Verify deep understanding of architectural concepts (not just buzzwords)",
+        found=len(keywords_found_in_context) >= 2,
         content=str(concept_data),
         location=pdf_path,
-        rationale="Performed RAG-lite keyword search on the PDF.",
-        confidence=0.8
-    )]
-    
-    # Host Analysis Accuracy (Cross-reference prep)
-    evidences["report_accuracy_extraction"] = [Evidence(
-        goal="Extract file paths from report for cross-referencing",
+        rationale=(
+            f"Found {len(keywords_found_in_context)} keywords with substantive context: {keywords_found_in_context}. "
+            f"Buzzword-only drops: {keywords_only_buzzword}."
+        ),
+        confidence=0.85,
+    )
+
+    # Report Accuracy — store extracted paths for aggregator cross-reference
+    accuracy_evidence = Evidence(
+        goal="Extract file paths from report for cross-referencing with repo",
         found=len(extracted_paths) > 0,
-        content=", ".join(extracted_paths),
+        content="\n".join(extracted_paths),
         location=pdf_path,
-        rationale="Extracted file paths mentioned in documentation.",
-        confidence=0.7
-    )]
-    
-    return {"evidences": evidences}
+        rationale=f"Extracted {len(extracted_paths)} potential file paths from the PDF for cross-reference.",
+        confidence=0.75,
+    )
+
+    return {"evidences": {
+        "theoretical_depth": [theoretical_evidence],
+        "report_accuracy_raw_paths": [accuracy_evidence],
+    }}
+
 
 def vision_inspector_node(state: AgentState) -> dict:
     """Node for forensic analysis of diagrams in the PDF."""
     pdf_path = state["pdf_path"]
     viz = VisionInspector()
-    
-    # Extract images (Implementation is stubbed in tools)
+
     images = viz.extract_images_from_pdf(pdf_path)
-    
-    evidences = {}
-    
-    # Swarm Visual
-    evidences["swarm_visual"] = [Evidence(
-        goal="Analyze architectural diagrams for parallelism",
-        found=len(images) > 0,
-        content=f"Found {len(images)} images. Analyzing for parallel flow patterns.",
-        location=pdf_path,
-        rationale="Visual inspection of PDF diagrams for fan-out/fan-in patterns.",
-        confidence=0.5
-    )]
-    
+
+    evidences = {
+        "swarm_visual": [Evidence(
+            goal="Analyze architectural diagrams for fan-out/fan-in parallelism",
+            found=len(images) > 0,
+            content=(
+                f"Found {len(images)} image(s). "
+                + (viz.analyze_diagram(images[0]) if images else "No images to analyze.")
+            ),
+            location=pdf_path,
+            rationale=(
+                "VisionInspector extracted images and classified diagram type. "
+                "Execution of multimodal model is optional per rubric."
+            ),
+            confidence=0.5 if not images else 0.7,
+        )]
+    }
+
     return {"evidences": evidences}
 
+
 def evidence_aggregator_node(state: AgentState) -> dict:
-    """Sync node (Fan-In) that technically just passes state, but ensures synchronization."""
-    # In LangGraph, fan-in happens automatically when multiple branches lead to one node.
-    # This node can also perform cross-referencing between repo and doc evidence.
+    """
+    Synchronization node (Fan-In): collects all Detective evidence and performs
+    cross-referencing between repo findings and document claims.
+    """
+    evidences = state.get("evidences", {})
+
+    # Cross-reference: report claims vs. actual repo files
+    # DocAnalyst extracts paths; RepoInvestigator confirms via git_log/ast evidence
+    raw_paths_evidence = evidences.get("report_accuracy_raw_paths", [])
+    if raw_paths_evidence and raw_paths_evidence[0].found:
+        claimed_paths = raw_paths_evidence[0].content.split("\n") if raw_paths_evidence[0].content else []
+        # The git evidence content contains actual file paths found via AST scan
+        actual_state_evidence = evidences.get("state_management_rigor", [])
+        actual_graph_evidence = evidences.get("graph_orchestration", [])
+        known_real_paths = set()
+        for ev in actual_state_evidence + actual_graph_evidence:
+            if ev.content:
+                for line in ev.content.split("\n"):
+                    if "/" in line or ".py" in line:
+                        known_real_paths.add(line.split(":")[0].strip())
+
+        verified = [p for p in claimed_paths if any(r in p or p in r for r in known_real_paths)]
+        hallucinated = [p for p in claimed_paths if p not in verified]
+
+        cross_ref = Evidence(
+            goal="Cross-reference report file claims against actual repo contents",
+            found=len(hallucinated) == 0,
+            content=(
+                f"Verified paths ({len(verified)}): {verified}\n"
+                f"Hallucinated paths ({len(hallucinated)}): {hallucinated}"
+            ),
+            location="cross-reference: PDF vs Repo",
+            rationale=(
+                f"{len(verified)} claimed paths verified. "
+                f"{len(hallucinated)} paths appear in report but not in repo (potential hallucinations)."
+            ),
+            confidence=0.8,
+        )
+        return {"evidences": {"report_accuracy": [cross_ref]}}
+
     return {}
