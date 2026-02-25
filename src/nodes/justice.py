@@ -177,9 +177,10 @@ def chief_justice_node(state: AgentState) -> dict:
 
     md_content = "\n".join(md_lines)
 
-    # Ensure output directory exists
-    os.makedirs("audit/report_onself_generated", exist_ok=True)
-    report_path = "audit/report_onself_generated/report.md"
+    # Ensure output directory exists from env or default
+    output_dir = os.getenv("AUDIT_OUTPUT_DIR", "audit/report_onself_generated")
+    os.makedirs(output_dir, exist_ok=True)
+    report_path = os.path.join(output_dir, "report.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(md_content)
 
