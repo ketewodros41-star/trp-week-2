@@ -30,8 +30,14 @@
   - [Integration Testing](#integration-testing)
   - [Quality Assurance](#quality-assurance)
   - [Validation Metrics](#validation-metrics)
-- [Known Gaps \& Roadmap](#known-gaps--roadmap)
-  - [Immediate Priorities (Week 3)](#immediate-priorities-week-3)
+- [Gap Analysis and Forward Plan](#gap-analysis-and-forward-plan)
+  - [Current Implementation Status](#current-implementation-status)
+  - [Detailed Forward Plan](#detailed-forward-plan)
+    - [Phase 1: Judicial Layer Implementation (Week 3)](#phase-1-judicial-layer-implementation-week-3)
+    - [Phase 2: Synthesis Engine Enhancement (Week 3-4)](#phase-2-synthesis-engine-enhancement-week-3-4)
+    - [Phase 3: Advanced Features (Week 4-5)](#phase-3-advanced-features-week-4-5)
+  - [Implementation Sequence and Dependencies](#implementation-sequence-and-dependencies)
+  - [Success Criteria and Validation](#success-criteria-and-validation)
   - [Medium-term Goals (Week 4-5)](#medium-term-goals-week-4-5)
   - [Long-term Vision (Post-Week 5)](#long-term-vision-post-week-5)
 - [Getting Started](#getting-started)
@@ -45,7 +51,8 @@
   - [Pydantic and TypedDict for State Rigor](#pydantic-and-typeddict-for-state-rigor)
   - [AST-based Forensic Analysis](#ast-based-forensic-analysis)
   - [Sandboxed Repository Cloning](#sandboxed-repository-cloning)
-  - [Parallel Orchestration: Fan-Out / Fan-In](#parallel-orchestration-fan-out--fan-in)
+  - [RAG-lite for PDF Processing](#rag-lite-for-pdf-processing)
+  - [LLM Provider Selection for Judicial Layer](#llm-provider-selection-for-judicial-layer)
 - [Planned Judicial and Synthesis Protocols](#planned-judicial-and-synthesis-protocols)
 - [Appendix: Key Files Referenced](#appendix-key-files-referenced)
 - [Conclusion](#conclusion)
@@ -259,26 +266,151 @@ def clone_repo(self, repo_url: str) -> str:
 - **Reliability**: System uptime and error rate monitoring
 - **Scalability**: Performance under increasing codebase complexity
 
-## Known Gaps & Roadmap
+## Gap Analysis and Forward Plan
 
-### Immediate Priorities (Week 3)
+### Current Implementation Status
 
-**1. Judicial Layer Completion (High Priority)**
-- Implement Prosecutor node with critical analysis capabilities
-- Implement Defense node with mitigating factor analysis
-- Implement Tech Lead node with pragmatic technical assessment
-- Integrate all judges with `.with_structured_output()` for structured reasoning
+**✅ Completed (Detective Layer & Infrastructure)**
+- **RepoInvestigator**: Full AST-based code analysis with git history forensics
+- **DocAnalyst**: PDF processing with RAG-lite query system
+- **VisionInspector**: Image extraction and basic classification
+- **Evidence Aggregator**: Parallel evidence collection and synchronization
+- **State Management**: Pydantic models with TypedDict reducers
+- **Graph Orchestration**: Complete parallel fan-out/fan-in architecture
+- **Security Infrastructure**: Sandboxed cloning with comprehensive error handling
 
-**2. Synthesis Engine Enhancement (High Priority)**
-- Complete ChiefJustice conflict resolution logic
-- Implement rule-based scoring aggregation
-- Add dissent explanation generation for score variance > 2
-- Integrate final report generation pipeline
+**🔧 In Progress (Judicial Layer & Synthesis)**
+- **Judge Stubs**: Basic structure in `src/nodes/judges.py` (awaiting full implementation)
+- **Pydantic Schemas**: `JudicialOpinion` model defined and validated
+- **Chief Justice Framework**: Basic structure in place
+- **Conflict Resolution Rules**: Rule-based system defined in `rubric.json`
 
-**3. Vision Analysis Enhancement (Medium Priority)**
-- Integrate PyMuPDF for robust PDF image extraction
-- Implement multimodal vision model for diagram semantic analysis
-- Add visual artifact classification and context preservation
+### Detailed Forward Plan
+
+#### Phase 1: Judicial Layer Implementation (Week 3)
+
+**1.1 Prosecutor Node Implementation**
+- **Persona Definition**: Critical analysis focusing on violations, security issues, and architectural anti-patterns
+- **Evidence Processing**: Filter evidence for negative indicators, security vulnerabilities, and compliance violations
+- **Output Format**: `JudicialOpinion` with low scores (1-3) and detailed violation descriptions
+- **Risk Mitigation**: Implement evidence validation to prevent false positives from incomplete evidence
+
+**1.2 Defense Node Implementation**
+- **Persona Definition**: Mitigating factors analysis, highlighting positive aspects and contextual justifications
+- **Evidence Processing**: Filter evidence for positive indicators, best practices, and mitigating circumstances
+- **Output Format**: `JudicialOpinion` with higher scores (3-5) and justification explanations
+- **Risk Mitigation**: Implement cross-validation with Prosecutor findings to ensure balanced perspective
+
+**1.3 Tech Lead Node Implementation**
+- **Persona Definition**: Pragmatic assessment of technical debt, maintainability, and practical considerations
+- **Evidence Processing**: Focus on technical debt indicators, code complexity, and maintainability metrics
+- **Output Format**: `JudicialOpinion` with balanced scores (2-4) and practical recommendations
+- **Risk Mitigation**: Implement technical debt quantification to prevent subjective scoring
+
+**1.4 Structured Output Integration**
+- **Implementation**: Use `.with_structured_output(JudicialOpinion)` for all judges
+- **Validation**: Add retry logic for malformed outputs with exponential backoff
+- **Error Handling**: Implement fallback mechanisms for LLM failures
+- **Risk Mitigation**: Add output format validation to prevent downstream processing failures
+
+**Specific Risks and Failure Modes:**
+- **LLM Persona Drift**: Judges may converge to similar opinions despite different prompts
+  - *Mitigation*: Use distinct prompt engineering with clear role definitions and examples
+- **Evidence Misinterpretation**: Judges may misinterpret evidence due to context limitations
+  - *Mitigation*: Implement evidence chunking and provide full context in prompts
+- **Structured Output Failures**: LLM may ignore structured output constraints
+  - *Mitigation*: Add validation and retry logic with alternative prompt strategies
+
+#### Phase 2: Synthesis Engine Enhancement (Week 3-4)
+
+**2.1 ChiefJustice Conflict Resolution Logic**
+- **Rule-Based Aggregation**: Implement scoring aggregation based on rubric.json rules
+- **Security Priority**: Ensure security violations take precedence in final scoring
+- **Variance Detection**: Identify when judge scores differ by >2 points
+- **Dissent Generation**: Automatically generate explanations for score variance
+
+**2.2 Report Generation Pipeline**
+- **Executive Summary**: Generate high-level assessment with key findings
+- **Detailed Analysis**: Create criterion-by-criterion breakdown with evidence citations
+- **Remediation Plan**: Generate actionable recommendations prioritized by impact
+- **Confidence Metrics**: Include confidence scores for each assessment
+
+**2.3 Quality Assurance Measures**
+- **Consistency Checks**: Validate that final scores align with evidence strength
+- **Bias Detection**: Identify and flag potential bias in judicial reasoning
+- **Completeness Validation**: Ensure all rubric criteria are addressed
+- **Performance Monitoring**: Track processing time and resource usage
+
+**Specific Risks and Failure Modes:**
+- **Rule Conflicts**: Multiple rules may apply to the same evidence with conflicting outcomes
+  - *Mitigation*: Implement rule priority system with clear precedence hierarchy
+- **Score Inconsistency**: Final scores may not align with evidence strength
+  - *Mitigation*: Add validation rules to ensure score-evidence alignment
+- **Dissent Generation Failures**: System may fail to generate meaningful explanations for variance
+  - *Mitigation*: Implement fallback explanation templates with evidence references
+
+#### Phase 3: Advanced Features (Week 4-5)
+
+**3.1 Vision Analysis Enhancement**
+- **PyMuPDF Integration**: Robust PDF image extraction with format support
+- **Multimodal Analysis**: Integration with vision models for diagram semantic analysis
+- **Context Preservation**: Maintain relationship between visual and textual content
+- **Artifact Classification**: Automatic classification of diagram types and content
+
+**3.2 Advanced RAG System**
+- **Vector Embeddings**: Implement semantic document retrieval for large documents
+- **Context Windowing**: Handle documents larger than LLM context windows
+- **Cross-Reference Validation**: Enhanced validation between document claims and codebase
+- **Performance Optimization**: Caching strategies for expensive embedding operations
+
+**3.3 Performance and Scalability**
+- **Caching Strategies**: Implement caching for expensive operations (AST parsing, embeddings)
+- **Parallel Optimization**: Optimize resource utilization for concurrent agent execution
+- **Incremental Analysis**: Support for analyzing only changed files in large repositories
+- **Resource Monitoring**: Real-time monitoring of memory and CPU usage
+
+### Implementation Sequence and Dependencies
+
+**Week 3 (Critical Path):**
+1. Complete Prosecutor node implementation
+2. Complete Defense node implementation  
+3. Complete Tech Lead node implementation
+4. Integrate structured output for all judges
+5. Test judicial layer with sample repositories
+
+**Week 4 (Parallel Development):**
+1. Implement ChiefJustice conflict resolution
+2. Enhance dissent explanation generation
+3. Begin vision analysis enhancement
+4. Start advanced RAG implementation
+5. Performance optimization for judicial layer
+
+**Week 5 (Polish and Scale):**
+1. Complete vision analysis enhancement
+2. Finish advanced RAG system
+3. Implement comprehensive testing framework
+4. Performance optimization and scaling
+5. Documentation and deployment preparation
+
+### Success Criteria and Validation
+
+**Functional Validation:**
+- All three judges produce distinct, valid `JudicialOpinion` outputs
+- ChiefJustice correctly resolves conflicts and generates dissent explanations
+- Final reports contain actionable, evidence-backed recommendations
+- System handles edge cases (missing evidence, contradictory findings) gracefully
+
+**Performance Validation:**
+- Judicial layer completes within 5 minutes for typical repositories
+- Memory usage remains under 2GB for standard-sized codebases
+- Structured output success rate >95% with retry mechanisms
+- Parallel execution provides >50% speedup over sequential processing
+
+**Quality Validation:**
+- Judicial opinions demonstrate clear persona differentiation
+- Final scores correlate with evidence strength and rubric rules
+- Generated reports provide actionable insights for developers
+- System maintains consistency across multiple runs with identical inputs
 
 ### Medium-term Goals (Week 4-5)
 
@@ -383,29 +515,159 @@ graph TD
         TL --> CJ
     
         CJ --> END((END))
+        
+        %% State Type Labels
+        RI -.->|"Evidence[]"| AGG
+        DA -.->|"Evidence[]"| AGG
+        VI -.->|"Evidence[]"| AGG
+        AGG -.->|"Validated Evidence"| PR
+        AGG -.->|"Validated Evidence"| DF
+        AGG -.->|"Validated Evidence"| TL
+        PR -.->|"JudicialOpinion"| CJ
+        DF -.->|"JudicialOpinion"| CJ
+        TL -.->|"JudicialOpinion"| CJ
+        CJ -.->|"AuditReport"| END
+        
+        %% Conditional Error Paths
+        RI -.->|"Error: Clone Failed"| ERR1[Error Handler]
+        DA -.->|"Error: PDF Parse Failed"| ERR2[Error Handler]
+        VI -.->|"Error: Image Extract Failed"| ERR3[Error Handler]
+        AGG -.->|"Error: Evidence Validation Failed"| ERR4[Error Handler]
+        PR -.->|"Error: Structured Output Failed"| ERR5[Error Handler]
+        DF -.->|"Error: Structured Output Failed"| ERR6[Error Handler]
+        TL -.->|"Error: Structured Output Failed"| ERR7[Error Handler]
+        CJ -.->|"Error: Conflict Resolution Failed"| ERR8[Error Handler]
+        
+        ERR1 --> RETRY1[Retry Logic]
+        ERR2 --> RETRY2[Retry Logic]
+        ERR3 --> RETRY3[Retry Logic]
+        ERR4 --> RETRY4[Retry Logic]
+        ERR5 --> RETRY5[Retry Logic]
+        ERR6 --> RETRY6[Retry Logic]
+        ERR7 --> RETRY7[Retry Logic]
+        ERR8 --> RETRY8[Retry Logic]
+        
+        RETRY1 --> RI
+        RETRY2 --> DA
+        RETRY3 --> VI
+        RETRY4 --> AGG
+        RETRY5 --> PR
+        RETRY6 --> DF
+        RETRY7 --> TL
+        RETRY8 --> CJ
+        
+        %% Success/Failure Indicators
+        classDef success fill:#d4edda,stroke:#c3e6cb,color:#155724
+        classDef error fill:#f8d7da,stroke:#f5c6cb,color:#721c24
+        classDef retry fill:#fff3cd,stroke:#ffeaa7,color:#856404
+        
+        class RI,DA,VI,AGG,PR,DF,TL,CJ,END success
+        class ERR1,ERR2,ERR3,ERR4,ERR5,ERR6,ERR7,ERR8 error
+        class RETRY1,RETRY2,RETRY3,RETRY4,RETRY5,RETRY6,RETRY7,RETRY8 retry
 ```
 
 ## Architecture Decisions
 
 ### Pydantic and TypedDict for State Rigor
 
-- **Rationale**: Typed state (Pydantic `BaseModel` and `typing_extensions.TypedDict`) prevents silent schema drift and ensures that each node's input/output is validated. This avoids the common "dict soup" failure mode in autonomous systems.
-- **Implementation**: `src/state.py` defines `Evidence`, `JudicialOpinion`, `CriterionResult`, `AuditReport`, and an `AgentState` TypedDict. The `AgentState` is annotated with reducers (`operator.ior` for dicts, `operator.add` for lists) to support parallel fan-out without data loss.
+**Decision**: Use Pydantic `BaseModel` for all data objects combined with TypedDict for graph state, annotated with operator reducers.
+
+**Why This Choice**: 
+- **Failure Mode Prevention**: Plain dictionaries in parallel execution lead to silent data corruption when multiple agents write to the same keys. The "dict soup" problem manifests as lost evidence or overwritten judicial opinions.
+- **Validation at Runtime**: Pydantic validation catches schema drift immediately, preventing downstream failures where judges receive malformed evidence.
+- **Type Safety**: TypedDict with `Annotated` reducers (`operator.ior` for dicts, `operator.add` for lists) ensures parallel agents merge data correctly without race conditions.
+
+**Alternatives Considered**:
+- **Plain Dicts**: Rejected due to data loss in parallel execution and lack of validation
+- **Custom Validation Classes**: Rejected as Pydantic provides battle-tested validation with minimal boilerplate
+- **JSON Schema**: Rejected as it lacks Python-native type hints and runtime validation
+
+**Trade-offs**: Slight performance overhead from validation, but this is acceptable given the critical need for data integrity in forensic analysis.
 
 ### AST-based Forensic Analysis
 
-- **Rationale**: Static AST parsing is deterministic, auditable, and far less brittle than regex or heuristic-based text searches for structural properties (e.g., model inheritance, StateGraph instantiation, explicit structured-output calls).
-- **Implementation**: `src/tools/repo_tools.py` walks the repository, parsing `.py` files with `ast.parse` and recording occurrences of `BaseModel`, `TypedDict`, `StateGraph`, and calls like `.with_structured_output()`.
+**Decision**: Use Python's `ast` module for code analysis instead of regex or string-based pattern matching.
+
+**Why This Choice**:
+- **Reliability**: AST parsing handles complex code structures reliably, including multiline class definitions, nested functions, and complex inheritance patterns that regex cannot parse correctly.
+- **Deterministic Results**: AST provides consistent, parseable representations regardless of code formatting, whitespace, or comment placement.
+- **Security Analysis**: AST enables precise detection of security vulnerabilities by understanding code semantics rather than just text patterns.
+
+**Failure Mode Prevention**: Regex-based approaches fail on:
+- Multiline class definitions: `class Foo(\n    BaseClass\n):`
+- Nested structures: Classes within functions or other classes
+- Dynamic imports: `importlib.import_module()` calls
+- Obfuscated code: Intentionally formatted to break regex patterns
+
+**Alternatives Considered**:
+- **Regex Patterns**: Rejected due to brittleness with complex code structures
+- **Static Analysis Tools**: Considered but would add external dependencies and complexity
+- **Manual Code Review**: Not scalable for automated auditing
+
+**Trade-offs**: AST parsing requires more memory and processing time than regex, but provides significantly higher accuracy and reliability.
 
 ### Sandboxed Repository Cloning
 
-- **Rationale**: Cloning untrusted repositories into the runner workspace is unsafe. Use ephemeral, OS-level temporary directories to avoid contamination and make cleanup explicit.
-- **Implementation**: `RepoInvestigator.clone_repo` currently uses `tempfile.mkdtemp()` and cleans up on error; consider using `tempfile.TemporaryDirectory()` context manager for cleaner automatic teardown, but the current approach enforces explicit control over lifecycle.
+**Decision**: Clone repositories into ephemeral temporary directories with explicit cleanup and subprocess-based git operations.
 
-### Parallel Orchestration: Fan-Out / Fan-In
+**Why This Choice**:
+- **Security Isolation**: Untrusted repositories never touch the live workspace, preventing malicious code execution or workspace contamination.
+- **Resource Management**: Explicit cleanup prevents disk space exhaustion from accumulated cloned repositories.
+- **Error Handling**: Subprocess-based operations allow proper error capture and handling, unlike shell commands that can fail silently.
 
-- **Rationale**: Parallel evidence collection reduces latency and enables dialectical synthesis across orthogonal evidence sources (code, document, and visual media).
-- **Implementation**: `src/graph.py` constructs a `StateGraph` with three detective nodes (`repo_investigator`, `doc_analyst`, `vision_inspector`) wired in parallel from `START`, all converging on `evidence_aggregator` before any judge logic.
+**Failure Mode Prevention**: Without sandboxing:
+- Malicious repositories could execute code in the runner environment
+- Workspace contamination could affect subsequent audits
+- Resource leaks from uncleaned temporary directories
+
+**Alternatives Considered**:
+- **Direct Workspace Cloning**: Rejected due to security risks and workspace contamination
+- **Docker Containers**: Considered but adds complexity for the current scope
+- **Git Submodules**: Rejected as they don't provide sufficient isolation
+
+**Trade-offs**: Temporary directory approach requires explicit cleanup management but provides the right balance of security and simplicity.
+
+### RAG-lite for PDF Processing
+
+**Decision**: Implement keyword-based RAG-lite approach for PDF document analysis rather than full vector embedding systems.
+
+**Why This Choice**:
+- **Performance**: Keyword-based queries are faster and require less computational resources than vector embeddings.
+- **Simplicity**: Reduces complexity while still providing effective document analysis for architectural reports.
+- **Reliability**: Less prone to hallucination compared to LLM-only document analysis.
+
+**Failure Mode Prevention**: Full LLM document analysis can:
+- Miss critical architectural claims due to context window limitations
+- Generate false positives from misinterpreted document content
+- Be computationally expensive for large documents
+
+**Alternatives Considered**:
+- **Full Vector Embeddings**: Rejected due to complexity and resource requirements for the current scope
+- **LLM-only Analysis**: Rejected due to reliability concerns and context limitations
+- **Manual Document Review**: Not scalable for automated auditing
+
+**Trade-offs**: Keyword-based approach may miss nuanced relationships that vector embeddings could capture, but provides reliable, fast analysis suitable for the current requirements.
+
+### LLM Provider Selection for Judicial Layer
+
+**Decision**: Use OpenAI's GPT models for judicial reasoning with structured output enforcement.
+
+**Why This Choice**:
+- **Structured Output**: OpenAI's `.with_structured_output()` ensures consistent, parseable judicial opinions.
+- **Reliability**: Proven track record for complex reasoning tasks and consistent output quality.
+- **Integration**: Seamless integration with LangChain's structured output framework.
+
+**Failure Mode Prevention**: Alternative approaches risk:
+- Inconsistent output formats that break downstream processing
+- Hallucinated evidence citations
+- Poor reasoning quality affecting audit reliability
+
+**Alternatives Considered**:
+- **Open Source Models**: Rejected due to inconsistent output quality and lack of structured output support
+- **Multiple Providers**: Considered for redundancy but rejected due to complexity
+- **Rule-based Only**: Rejected as it lacks the nuanced reasoning capabilities needed for code evaluation
+
+**Trade-offs**: OpenAI API costs vs. the critical need for reliable, structured judicial reasoning.
 
 ## Planned Judicial and Synthesis Protocols
 

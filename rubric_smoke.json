@@ -1,0 +1,14 @@
+{
+    "dimensions": [
+        {
+            "id": "git_forensic_analysis",
+            "name": "Git Forensic Analysis",
+            "description": "Analyze commit history."
+        },
+        {
+            "id": "graph_orchestration",
+            "name": "Graph Orchestration",
+            "description": "Verify parallel fan-out/fan-in."
+        }
+    ]
+}

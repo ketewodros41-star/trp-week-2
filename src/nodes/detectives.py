@@ -13,7 +13,8 @@ def context_builder_node(state: AgentState) -> dict:
     available = []
     
     # Check Repo
-    if state.get("repo_url") and state["repo_url"].startswith("http"):
+    repo_ref = state.get("repo_url")
+    if repo_ref and (repo_ref.startswith("http") or os.path.exists(repo_ref)):
         available.append("repo")
     
     # Check PDF
@@ -26,79 +27,111 @@ def context_builder_node(state: AgentState) -> dict:
 
 
 def repo_investigator_node(state: AgentState) -> dict:
-    """Node for forensic analysis of the repository."""
+    """Node for deep forensic analysis of the repository using AST + git forensics."""
     repo_url = state["repo_url"]
     if not repo_url:
         return {"evidences": {}}
-        
-    inv = RepoInvestigator()
 
-    try:
-        repo_path = inv.clone_repo(repo_url)
-    except Exception as e:
-        logger.error(f"RepoInvestigator failed to clone: {e}")
-        return {"evidences": {"safe_tool_engineering": [Evidence(
-            goal="Clone repository safely",
-            found=False,
-            location=repo_url,
-            rationale=f"Clone failed: {str(e)}",
-            confidence=1.0
-        )]}}
+    inv = RepoInvestigator()
+    should_cleanup = False
+
+    if os.path.exists(repo_url):
+        repo_path = repo_url
+        logger.info(f"RepoInvestigator using local repository path: {repo_path}")
+    else:
+        try:
+            repo_path = inv.clone_repo(repo_url)
+            should_cleanup = True
+        except Exception as e:
+            logger.error(f"RepoInvestigator failed to clone: {e}")
+            return {"evidences": {"safe_tool_engineering": [Evidence(
+                goal="Clone repository safely",
+                found=False,
+                location=repo_url,
+                rationale=f"Clone failed: {str(e)}",
+                confidence=1.0
+            )]}}
 
     try:
         git_log = inv.get_git_log(repo_path)
         ast_data = inv.analyze_ast(repo_path)
+        progression = inv.analyze_git_progression(git_log)
 
         evidences = {}
 
         # -------------------------------------------------------------------
-        # Evidence: Git Forensic Analysis
+        # Evidence: Git Forensic Analysis (with progression detection)
         # -------------------------------------------------------------------
         commit_count = len(git_log)
-        messages = [c["message"] for c in git_log]
-        has_progression = (
-            commit_count > 3
-            and any(kw in " ".join(messages).lower() for kw in ["setup", "init", "environment"])
-            and any(kw in " ".join(messages).lower() for kw in ["tool", "engineer", "detective"])
-        )
         evidences["git_forensic_analysis"] = [Evidence(
-            goal="Analyze commit history for atomic progression",
+            goal="Analyze commit history for atomic progression vs. bulk uploads",
             found=commit_count > 3,
             content="\n".join([f"{c['hash']} {c['timestamp']}: {c['message']}" for c in git_log]),
             location="git log --oneline --reverse",
-            rationale=f"Found {commit_count} commits. Progression pattern detected: {has_progression}.",
+            rationale=(
+                f"Found {commit_count} commits. "
+                f"Pattern: {progression['pattern']}. "
+                f"{progression['details']}"
+            ),
             confidence=1.0,
         )]
 
         # -------------------------------------------------------------------
-        # Evidence: State Management Rigor
+        # Evidence: State Management Rigor (with reducer detection)
         # -------------------------------------------------------------------
         state_defs = ast_data["state_definitions"]
+        reducer_annotations = ast_data["reducer_annotations"]
+        has_reducers = len(reducer_annotations) > 0
+
         evidences["state_management_rigor"] = [Evidence(
-            goal="Verify Pydantic/TypedDict AgentState with reducers",
-            found=len(state_defs) > 0,
-            content="\n".join(state_defs),
+            goal="Verify Pydantic/TypedDict AgentState with Annotated reducers",
+            found=len(state_defs) > 0 and has_reducers,
+            content="\n".join(state_defs + reducer_annotations),
             location="src/state.py",
-            rationale=f"Found {len(state_defs)} typed class definitions (BaseModel/TypedDict).",
-            confidence=0.95,
+            rationale=(
+                f"Found {len(state_defs)} typed class definitions (BaseModel/TypedDict). "
+                f"Reducer annotations found: {len(reducer_annotations)} "
+                f"({'parallel-safe' if has_reducers else 'NO reducers — data race risk'})."
+            ),
+            confidence=0.95 if has_reducers else 0.6,
         )]
 
         # -------------------------------------------------------------------
-        # Evidence: Graph Orchestration
+        # Evidence: Graph Orchestration (with topology validation)
         # -------------------------------------------------------------------
         graph_defs = ast_data["graph_definitions"]
         parallel_edges = ast_data["parallel_edges"]
+        topology = ast_data["topology"]
+
+        fan_out_nodes = topology["fan_out_sources"]
+        fan_in_nodes = topology["fan_in_targets"]
+        has_fan_pattern = topology["has_fan_out_fan_in"]
+        error_edges = topology["error_handling_edges"]
+
+        topology_summary = (
+            f"Fan-out nodes: {[f['node'] + ' → ' + str(f['targets']) for f in fan_out_nodes]}. "
+            f"Fan-in nodes: {[f['node'] + ' ← ' + str(f['targets']) for f in fan_in_nodes]}. "
+            f"Error-handling edges: {error_edges or 'None detected'}."
+        )
+
         evidences["graph_orchestration"] = [Evidence(
-            goal="Verify LangGraph parallel fan-out/fan-in architecture",
-            found=len(graph_defs) > 0,
-            content="\n".join(graph_defs + parallel_edges),
+            goal="Verify LangGraph parallel fan-out/fan-in architecture with topology validation",
+            found=len(graph_defs) > 0 and has_fan_pattern,
+            content="\n".join(
+                graph_defs + parallel_edges +
+                [f"TOPOLOGY: {topology_summary}"] +
+                [f"Node: {n}" for n in topology["nodes_added"]]
+            ),
             location="src/graph.py",
             rationale=(
                 f"StateGraph instantiated: {len(graph_defs) > 0}. "
-                f"Edge calls found: {len(parallel_edges)}. "
-                "Parallelism implied by multiple edges from START."
+                f"Edge calls: {len(parallel_edges)}. "
+                f"Fan-out sources: {len(fan_out_nodes)}. "
+                f"Fan-in targets: {len(fan_in_nodes)}. "
+                f"True fan-out/fan-in pattern: {has_fan_pattern}. "
+                f"Error-handling edges: {len(error_edges)}."
             ),
-            confidence=0.9,
+            confidence=0.95 if has_fan_pattern else 0.5,
         )]
 
         # -------------------------------------------------------------------
@@ -122,7 +155,8 @@ def repo_investigator_node(state: AgentState) -> dict:
 
         return {"evidences": evidences}
     finally:
-        inv.cleanup(repo_path)
+        if should_cleanup:
+            inv.cleanup(repo_path)
 
 
 def _check_safe_tool_engineering(repo_path: str) -> Evidence:
@@ -244,7 +278,7 @@ def doc_analyst_node(state: AgentState) -> dict:
 
 
 def vision_inspector_node(state: AgentState) -> dict:
-    """Node for forensic analysis of diagrams in the PDF."""
+    """Node for forensic analysis of diagrams in the PDF using multimodal LLM."""
     pdf_path = state["pdf_path"]
     if not pdf_path or not os.path.exists(pdf_path):
         return {"evidences": {}}
@@ -252,20 +286,36 @@ def vision_inspector_node(state: AgentState) -> dict:
     viz = VisionInspector()
     images = viz.extract_images_from_pdf(pdf_path)
 
+    if not images:
+        return {"evidences": {"swarm_visual": [Evidence(
+            goal="Extract and analyze architectural diagrams",
+            found=False,
+            content="No embedded images found in the PDF.",
+            location=pdf_path,
+            rationale="VisionInspector scanned all PDF pages but found zero embedded images.",
+            confidence=1.0,
+        )]}}
+
+    # Analyze each extracted image (up to 3 to avoid rate limits)
+    analyses = []
+    for img_path in images[:3]:
+        analysis = viz.analyze_diagram(img_path)
+        analyses.append(f"[{os.path.basename(img_path)}]: {analysis}")
+
     evidences = {
         "swarm_visual": [Evidence(
             goal="Analyze architectural diagrams for fan-out/fan-in parallelism",
-            found=len(images) > 0,
+            found=True,
             content=(
-                f"Found {len(images)} image(s). "
-                + (viz.analyze_diagram(images[0]) if images else "No images to analyze.")
+                f"Extracted {len(images)} image(s) from PDF. "
+                f"Analyzed {min(len(images), 3)}:\n" + "\n".join(analyses)
             ),
             location=pdf_path,
             rationale=(
-                "VisionInspector extracted images and classified diagram type. "
-                "Execution of multimodal model is optional per rubric."
+                f"VisionInspector extracted {len(images)} image(s) via PyMuPDF and "
+                f"performed multimodal analysis on {min(len(images), 3)} diagram(s)."
             ),
-            confidence=0.5 if not images else 0.7,
+            confidence=0.8,
         )]
     }
 

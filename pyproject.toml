@@ -16,6 +16,8 @@ dependencies = [
     "pymupdf>=1.24.0",
     "python-dotenv>=1.0.0",
     "typing-extensions>=4.0.0",
+    "langchain-google-genai>=4.2.1",
+    "google-generativeai>=0.8.6",
 ]
 
 [project.optional-dependencies]
